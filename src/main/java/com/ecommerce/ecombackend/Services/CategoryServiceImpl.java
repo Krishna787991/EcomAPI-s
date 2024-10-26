@@ -1,11 +1,19 @@
 package com.ecommerce.ecombackend.Services;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 import com.ecommerce.ecombackend.Exception.APIException;
 import com.ecommerce.ecombackend.Exception.ResourceNotFoundException;
+import com.ecommerce.ecombackend.Payload.CategoryDTO;
+import com.ecommerce.ecombackend.Payload.CategoryResponse;
 import com.ecommerce.ecombackend.Repository.CatgoryRepository;
+import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -18,41 +26,71 @@ public class CategoryServiceImpl implements CategoryService {
 	@Autowired
 	private CatgoryRepository categoryRepo;
 
+	@Autowired
+	private ModelMapper modelMapper;
+
 	@Override
-	public List<Category> getAllCategory() {
-		List<Category> categories=categoryRepo.findAll();
+	public CategoryResponse getAllCategory(Integer pageNumber,Integer pageSize,String sortBy,String sortorder) {
+
+
+		Sort sortByAndOrder= sortorder.equalsIgnoreCase("asc")
+				? Sort.by(sortBy).ascending()
+				: Sort.by(sortBy).descending();
+
+
+		Pageable pageDetails= PageRequest.of(pageNumber,pageSize,sortByAndOrder);
+		Page<Category> categoryPage=categoryRepo.findAll(pageDetails);
+
+		List<Category> categories = categoryPage.getContent();
 		if(categories.isEmpty()){
 			throw new APIException("No Category found till  now");
 		}
-		return categories;
+		List<CategoryDTO>categoryDTOS=categories.stream().
+				map(category -> modelMapper.map(category, CategoryDTO.class))
+				.toList();
+
+		CategoryResponse categoryResponse=new CategoryResponse();
+		categoryResponse.setContent(categoryDTOS);
+		categoryResponse.setPageNumber(categoryPage.getNumber());
+		categoryResponse.setPageSize(categoryPage.getSize());
+		categoryResponse.setTotalElements(categoryPage.getTotalElements());
+		categoryResponse.setTotalPages(categoryPage.getTotalPages());
+		categoryResponse.setLastPage(categoryPage.isLast());
+
+		return categoryResponse;
 	}
 
 	@Override
-	public String saveCategory(Category category) {
-		Category savedCategory=categoryRepo.findByCategoryName(category.getCategoryName());
-		if(savedCategory!=null){
+	public CategoryDTO saveCategory(CategoryDTO categoryDTO) {
+
+		Category category=modelMapper.map(categoryDTO,Category.class);
+
+		Category categoryFromDB=categoryRepo.findByCategoryName(category.getCategoryName());
+		if(categoryFromDB!=null){
 			throw new APIException("Category with this name %s is already exist".formatted(category.getCategoryName()));
 		}
-		categoryRepo.save(category);
-		return "category added successfully";
+		Category savedCategory=categoryRepo.save(category);
+
+		return modelMapper.map(savedCategory, CategoryDTO.class);
 	}
 	
 	
-	public String deleteCategory(Long categoryId) {
+	public CategoryDTO deleteCategory(Long categoryId) {
 		Category existingCategory=categoryRepo.findById(categoryId).
 				orElseThrow(()->new ResourceNotFoundException("Category","categoryId",categoryId));
 		categoryRepo.delete(existingCategory);
-		return "Category deleted succesfully";
+		return modelMapper.map(existingCategory,CategoryDTO.class);
 	}
 
 	@Override
-	public String updateCategory(Category category, Long categoryId) {
+	public CategoryDTO updateCategory(CategoryDTO categoryDTO, Long categoryId) {
 		// TODO Auto-generated method stub
 		Category existingCategory=categoryRepo.findById(categoryId).
 				orElseThrow(()->new ResourceNotFoundException("Category","categoryId",categoryId));
-		existingCategory.setCategoryName(category.getCategoryName());
+		existingCategory.setCategoryName(categoryDTO.getCategoryName());
 		categoryRepo.save(existingCategory);
-		return "Category Updated Successfully";
+
+		return modelMapper.map(existingCategory,CategoryDTO.class);
 	}
 
 }
